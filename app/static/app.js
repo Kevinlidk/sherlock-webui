@@ -1,12 +1,23 @@
-/* Sherlock WebUI frontend — vanilla JS, no external dependencies. */
+/* Sherlock WebUI frontend — vanilla JS, no external dependencies.
+ *
+ * History lives in the browser (localStorage), not on the server: the page
+ * keeps up to HISTORY_MAX recent jobs locally and only talks to the server
+ * for the currently opened job's detail. After a container restart old
+ * details are gone from server memory, so cached entries degrade gracefully
+ * to their last-known state with a notice.
+ */
 "use strict";
 
 const $ = (id) => document.getElementById(id);
 
+const HISTORY_KEY = "sherlock.history";
+const CURRENT_KEY = "sherlock.currentJob";
+const HISTORY_MAX = 20;
+
 const state = {
-  current: localStorage.getItem("sherlock.currentJob") || null,
+  current: localStorage.getItem(CURRENT_KEY) || null,
   showFoundOnly: false,
-  lastRendered: null, // serialize result of the current job
+  lastRendered: null, // last rendered job object (detail or cached summary)
 };
 
 const STATUS_LABELS = {
@@ -14,6 +25,7 @@ const STATUS_LABELS = {
   running: "侦查中",
   done: "已完成",
   error: "失败",
+  expired: "已过期",
 };
 
 const RESULT_LABELS = {
@@ -23,6 +35,44 @@ const RESULT_LABELS = {
   Illegal: "格式不符",
   WAF: "被拦截",
 };
+
+/* ---------- localStorage history ---------- */
+
+function loadHistory() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HISTORY_KEY));
+    return Array.isArray(raw) ? raw : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveHistory(list) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX)));
+  } catch (_) { /* storage full/blocked — history is best-effort */ }
+}
+
+function historyEntryFromJob(job) {
+  return {
+    id: job.id,
+    username: job.username,
+    created: job.created,
+    started: job.started ?? null,
+    status: job.status,
+    found: job.found ?? 0,
+    total: job.total ?? null,
+    completed: job.completed ?? null,
+    elapsed_s: job.elapsed_s ?? null,
+    files: job.files || {},
+  };
+}
+
+function upsertHistoryEntry(entry) {
+  const list = loadHistory().filter((e) => e.id !== entry.id);
+  list.unshift(entry);
+  saveHistory(list);
+}
 
 /* ---------- helpers ---------- */
 
@@ -79,20 +129,23 @@ function renderJobCard(job) {
   statusChip.id = "job-status";
 
   const total = job.total || 0;
-  const pct = total ? Math.round((job.completed / total) * 100) : 0;
-  $("job-fill").style.width = `${pct}%`;
-  $("job-progress-text").textContent = `进度 ${job.completed}/${total}（${pct}%）`;
+  const completed = job.completed != null ? job.completed : null;
+  const pctShown = total && completed != null ? Math.round((completed / total) * 100) : 0;
+  $("job-fill").style.width = `${pctShown}%`;
+  $("job-progress-text").textContent = completed != null
+    ? `进度 ${completed}/${total}（${pctShown}%）`
+    : `已收录 ${total} 个站点`;
   $("job-elapsed").textContent = fmtTime(job.started) ? `开始于 ${fmtTime(job.started)}` : "";
 
-  $("job-found").innerHTML = "";
   const foundLine = $("job-found");
+  foundLine.innerHTML = "";
   foundLine.append("命中 ");
-  foundLine.append(el("strong", null, String(job.found)));
-  foundLine.append(` / ${total} 个站点`);
+  foundLine.append(el("strong", null, String(job.found ?? 0)));
+  if (total) foundLine.append(` / ${total} 个站点`);
 
   const actions = $("job-actions");
   actions.innerHTML = "";
-  if (job.status === "done" && job.files) {
+  if (job.files) {
     for (const [kind, label] of [["json", "JSON"], ["csv", "CSV"], ["txt", "TXT"]]) {
       if (job.files[kind]) {
         const a = el("a", "btn btn-secondary", `下载 ${label}`);
@@ -111,7 +164,12 @@ function renderJobCard(job) {
   actions.append(rerun);
 
   const jobError = $("job-error");
-  if (job.status === "error" && job.error) {
+  if (job.expired) {
+    jobError.textContent =
+      "该任务详情已不在服务端内存中（容器重启后任务队列清空）。" +
+      "结果文件在挂载了结果卷时仍可下载，或点击“重新侦查”重新扫描。";
+    jobError.hidden = false;
+  } else if (job.status === "error" && job.error) {
     jobError.textContent = `任务失败：${job.error}`;
     jobError.hidden = false;
   } else {
@@ -156,50 +214,80 @@ function renderResultsTable(job) {
   }
 }
 
-function renderHistory(jobs) {
-  const list = $("history-list");
-  list.innerHTML = "";
-  $("history-empty").hidden = jobs.length > 0;
-  for (const job of jobs) {
+function renderHistory() {
+  const list = loadHistory();
+  const container = $("history-list");
+  container.innerHTML = "";
+  $("history-empty").hidden = list.length > 0;
+  for (const entry of list) {
     const li = el("li");
-    li.addEventListener("click", () => {
-      state.current = job.id;
-      localStorage.setItem("sherlock.currentJob", job.id);
-      refresh();
-    });
+    li.addEventListener("click", () => selectJob(entry.id));
 
-    li.append(el("span", "h-username", job.username));
+    li.append(el("span", "h-username", entry.username));
     const meta = el("span", "h-meta");
-    meta.append(chip(job.status, STATUS_LABELS));
-    meta.append(el("span", "muted", `命中 ${job.found}/${job.total}`));
-    if (job.elapsed_s != null) meta.append(el("span", "muted", `${job.elapsed_s}s`));
-    meta.append(el("span", "muted", fmtTime(job.created)));
+    meta.append(chip(entry.status, STATUS_LABELS));
+    if (entry.total != null) {
+      meta.append(el("span", "muted", `命中 ${entry.found ?? 0}/${entry.total}`));
+    }
+    if (entry.elapsed_s != null) meta.append(el("span", "muted", `${entry.elapsed_s}s`));
+    meta.append(el("span", "muted", fmtTime(entry.created)));
     li.append(meta);
-    list.append(li);
+
+    const del = el("button", "btn btn-secondary h-delete", "✕");
+    del.type = "button";
+    del.title = "从本地历史移除";
+    del.setAttribute("aria-label", `移除 ${entry.username} 的历史记录`);
+    del.addEventListener("click", (event) => {
+      event.stopPropagation();
+      saveHistory(loadHistory().filter((x) => x.id !== entry.id));
+      if (state.current === entry.id) {
+        state.current = null;
+        state.lastRendered = null;
+        localStorage.removeItem(CURRENT_KEY);
+        $("job-card").hidden = true;
+      }
+      renderHistory();
+    });
+    li.append(del);
+    container.append(li);
   }
 }
 
 /* ---------- data refresh ---------- */
 
-async function refresh() {
+async function pollCurrent(force = false) {
+  if (!state.current) return;
+  const last = state.lastRendered;
+  // details are immutable once finished — skip re-fetching finished jobs
+  if (!force && last && (last.status === "done" || last.status === "error")) return;
   try {
-    const jobs = await api("/api/jobs");
-    renderHistory(jobs);
-    if (state.current) {
-      const exists = jobs.some((j) => j.id === state.current);
-      if (!exists) {
-        state.current = null;
-        localStorage.removeItem("sherlock.currentJob");
-      } else {
-        const detail = await api(`/api/jobs/${state.current}`);
-        state.lastRendered = detail;
-        renderJobCard(detail);
-      }
-    }
-    $("error").hidden = true;
+    const detail = await api(`/api/jobs/${state.current}`);
+    state.lastRendered = detail;
+    renderJobCard(detail);
+    upsertHistoryEntry(historyEntryFromJob(detail));
+    renderHistory();
   } catch (err) {
-    showError(err.message);
+    if (state.lastRendered && /404|任务不存在/.test(err.message)) {
+      // server lost the job (restart/prune): degrade to the cached summary
+      const cached = { ...state.lastRendered, results: [], expired: true };
+      state.lastRendered = cached;
+      renderJobCard(cached);
+    } else {
+      showError(err.message);
+    }
   }
+}
+
+async function selectJob(id) {
+  state.current = id;
+  localStorage.setItem(CURRENT_KEY, id);
+  const cached = loadHistory().find((e) => e.id === id);
+  if (cached) {
+    // provisional render from local cache, replaced by live detail if available
+    state.lastRendered = { ...cached, results: [] };
+    renderJobCard(state.lastRendered);
+  }
+  await pollCurrent(true);
 }
 
 function showError(message) {
@@ -236,10 +324,11 @@ $("search-form").addEventListener("submit", async (event) => {
       body: JSON.stringify(payload),
     });
     state.current = job.id;
-    localStorage.setItem("sherlock.currentJob", job.id);
-    $("job-card").hidden = false;
-    $("results-body").innerHTML = "";
-    await refresh();
+    localStorage.setItem(CURRENT_KEY, job.id);
+    state.lastRendered = { ...job, results: [] };
+    renderJobCard(state.lastRendered);
+    upsertHistoryEntry(historyEntryFromJob(job));
+    renderHistory();
   } catch (err) {
     showError(err.message);
   } finally {
@@ -250,6 +339,11 @@ $("search-form").addEventListener("submit", async (event) => {
 $("found-only").addEventListener("change", (event) => {
   state.showFoundOnly = event.target.checked;
   if (state.lastRendered) renderResultsTable(state.lastRendered);
+});
+
+$("clear-history").addEventListener("click", () => {
+  saveHistory([]);
+  renderHistory();
 });
 
 async function checkHealth() {
@@ -276,7 +370,8 @@ async function loadSiteCount() {
 (async function init() {
   await checkHealth();
   loadSiteCount();
-  await refresh();
-  setInterval(refresh, 2000);
+  renderHistory();
+  if (state.current) selectJob(state.current);
+  setInterval(() => pollCurrent(false), 2000);
   setInterval(checkHealth, 30000);
 })();

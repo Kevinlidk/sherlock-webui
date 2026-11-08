@@ -45,6 +45,38 @@ h2 { margin: 0 0 4px; font-size: 18px; }
 
 .meta { display: flex; align-items: center; gap: 8px; }
 
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  margin-left: 12px;
+  transition: color .15s ease, transform .15s ease;
+}
+.github-link:hover { color: var(--text); transform: scale(1.08); }
+.github-link svg { width: 26px; height: 26px; fill: currentColor; }
+
+/* Dark scrollbars everywhere, matching the page theme. */
+html {
+  scrollbar-width: thin;                 /* Firefox */
+  scrollbar-color: var(--gray) var(--bg);
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--gray);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+.table-wrap {
+  scrollbar-width: thin;                 /* Firefox */
+  scrollbar-color: var(--gray) var(--card-2);
+}
+.table-wrap::-webkit-scrollbar-track { background: var(--card-2); border-radius: 999px; }
+.table-wrap::-webkit-scrollbar-thumb { border-color: var(--card-2); }
+.table-wrap::-webkit-scrollbar-corner { background: var(--card-2); }
+
 .dot {
   width: 10px; height: 10px; border-radius: 50%;
   background: var(--gray); display: inline-block;
@@ -61,6 +93,14 @@ h2 { margin: 0 0 4px; font-size: 18px; }
 }
 
 .section-title { font-size: 15px; color: var(--muted); margin-bottom: 10px; }
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.section-head .section-title { margin-bottom: 0; }
+#clear-history { padding: 6px 12px; font-size: 12px; }
 
 .search-row { display: flex; gap: 10px; }
 
@@ -150,6 +190,7 @@ button:disabled { opacity: .5; cursor: wait; }
 .chip.running { color: var(--blue); border-color: var(--blue); }
 .chip.done    { color: var(--green); border-color: var(--green); }
 .chip.error   { color: var(--red); border-color: var(--red); }
+.chip.expired { color: var(--orange); border-color: var(--orange); }
 
 .chip.claimed   { color: #05130c; background: var(--green); border-color: var(--green); }
 .chip.available { color: var(--muted); }
@@ -215,6 +256,19 @@ td .ctx { color: var(--muted); font-size: 12px; }
 .history li:hover { background: rgba(255, 255, 255, .02); }
 .history .h-username { font-weight: 600; min-width: 120px; }
 .history .h-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.h-delete {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.h-delete:hover {
+  color: var(--red);
+  border-color: var(--red);
+  background: transparent;
+  filter: none;
+}
 
 footer { text-align: center; margin-top: 8px; }
 
