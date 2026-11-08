@@ -1,0 +1,10 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.github
+.mimosa
+*.md
+!README.md
+sherlock/

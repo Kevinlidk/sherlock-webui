@@ -1,0 +1,15 @@
+services:
+  sherlock:
+    container_name: sherlock
+    image: ghcr.io/kevinlidk/sherlock-webui
+    volumes:
+      - ./sherlock/:/opt/sherlock/results/
+    ports:
+      - "3101:80"
+    restart: unless-stopped
+    networks:
+      - sherlock_network
+
+networks:
+  sherlock_network:
+    driver: bridge

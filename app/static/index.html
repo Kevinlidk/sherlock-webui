@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Sherlock WebUI · 用户名侦查</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%95%B5%EF%B8%8F%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>🕵️ Sherlock <span class="accent">WebUI</span></h1>
+      <p class="muted">跨社交网站用户名侦查 · 基于 sherlock-project</p>
+    </div>
+    <div class="meta">
+      <span class="dot" id="health-dot" title="服务状态"></span>
+      <span class="muted" id="sites-count">站点清单加载中…</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card search-card">
+      <form id="search-form" autocomplete="off">
+        <div class="search-row">
+          <input id="username" name="username" type="text" maxlength="64"
+                 placeholder="输入要侦查的用户名，如 torvalds" required>
+          <button type="submit" id="btn-search">开始侦查</button>
+        </div>
+        <details class="options">
+          <summary>高级选项</summary>
+          <div class="options-grid">
+            <label>超时（秒/站点）
+              <input id="timeout" type="number" min="1" max="120" value="15">
+            </label>
+            <label class="check">
+              <input id="nsfw" type="checkbox"> 包含 NSFW 站点
+            </label>
+            <label class="wide">仅查询指定站点（逗号分隔，留空 = 全部）
+              <input id="sites" type="text" placeholder="GitHub, Twitter">
+            </label>
+          </div>
+        </details>
+      </form>
+      <div class="error" id="error" hidden></div>
+    </section>
+
+    <section class="card job-card" id="job-card" hidden>
+      <div class="job-head">
+        <div>
+          <h2 id="job-username"></h2>
+          <span class="chip" id="job-status"></span>
+        </div>
+        <div class="job-actions" id="job-actions"></div>
+      </div>
+      <div class="progress-wrap">
+        <div class="bar"><div class="fill" id="job-fill"></div></div>
+        <div class="progress-meta muted">
+          <span id="job-progress-text"></span>
+          <span id="job-elapsed"></span>
+        </div>
+      </div>
+      <div class="found-line" id="job-found"></div>
+      <label class="filter-found">
+        <input type="checkbox" id="found-only"> 只看命中的站点
+      </label>
+      <div class="table-wrap">
+        <table id="results-table">
+          <thead>
+            <tr><th>状态</th><th>站点</th><th>链接</th><th>耗时</th><th>备注</th></tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+        <p class="muted empty" id="results-empty" hidden>暂无结果</p>
+      </div>
+      <div class="error" id="job-error" hidden></div>
+    </section>
+
+    <section class="card">
+      <h2 class="section-title">历史任务</h2>
+      <ul class="history" id="history-list"></ul>
+      <p class="muted empty" id="history-empty">暂无任务记录</p>
+    </section>
+  </main>
+
+  <footer class="muted">
+    仅供安全研究与授权调查使用 · 上游项目
+    <a href="https://github.com/sherlock-project/sherlock" target="_blank" rel="noopener noreferrer">sherlock-project/sherlock</a> (MIT)
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
